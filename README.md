@@ -6,7 +6,7 @@ Generate simple dynamic inventory against OVH Public Cloud
 
   - Python dependancies:
 
-'''
+```
 $ pip install json
 $ pip install ovh
 ```

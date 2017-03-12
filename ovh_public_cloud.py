@@ -9,79 +9,79 @@ import os
 
 class OvhPublicCloudInventory:
 
-    # Inventaire
+    # Inventory
     inventory = {'_meta': {'hostvars': {}}}
 
     def __init__(self):
-        ''' Construction de l'inventaire '''
+        ''' Construct inventory '''
 
-        # Variable pour le fichier de configuration
+        # Configuration file
         config_file = 'ovh_public_cloud.conf'
         current_path = os.path.dirname(os.path.abspath(__file__))
 
-        # Lecture de la configuration
+        # Configuration reading
         self.config = ConfigParser.RawConfigParser()
         self.config.read('%s/%s' % (current_path, config_file))
 
-        # Instanciation du client OVH
+        # OVH API client
         self.api = ovh.Client(config_file='%s/%s' % (current_path, config_file))
 
-        # Génération de l'inventaire
+        # Generate inventory
         self.generate()
 
 
     def __str__(self):
-        ''' Sortie json de l'inventaire '''
+        ''' Inventory JSON output '''
 
         return json.dumps(self.inventory, sort_keys=True, indent=4)
 
 
     def generate(self):
-        ''' Construction de l'inventaire des instances '''
+        ''' Generation for cloud instances inventory '''
 
-        # Pour chaque projet cloud
+        # For each public cloud project
         for project_id in self.api.get('/cloud/project'):
 
-            # Pour chaque groupe du projet cloud
+            # For each instance group
             for group in self.api.get('/cloud/project/%s/instance/group' % (project_id)):
                 self.add_group(project_id, group)
 
-            # Pour chaque instance du projet cloud
+            # For each instance
             for instance in self.api.get('/cloud/project/%s/instance' % (project_id)):
                 self.add_instance(project_id, instance)
 
 
     def add_group(self, project_id, group):
-        ''' Ajout des groupes d'instances et de la répartition des instances à l'intérieur '''
+        ''' Add instances into groups '''
 
-        # Les différents groupes découlant de celui envoyé
+        # Groups names from current group
         instance_groups = (group['id'], group['name'], '%s_%s' % (group['name'], group['region']))
 
-        # Toutes les instances du projet
+        # For every intance id of current group
         for instance_id in group['instance_ids']:
 
-            # Association des instances par groupe
+            # Allocate instances into those groups
             for instance_group in instance_groups:
                 self.inventory.setdefault(instance_group, []).append(instance_id)
 
 
     def add_instance(self, project_id, instance):
-        ''' Ajout des infos de l'instance pour l'utilisation avec ansible '''
+        ''' Add instance details for use with ansible '''
 
-        # Modèle d'instance
+        # Instance flavor
         flavor = self.api.get('/cloud/project/%s/flavor/%s' %
                             (project_id, instance['flavorId']))
 
-        # Image du système
+        # Instance os image
         image = self.api.get('/cloud/project/%s/image/%s' %
                            (project_id, instance['imageId']))
 
-        # Affectation des id d'instances dans chacun des nouveaux groupes
+        # Allocate instance into new groups
         for instance_group in (project_id, instance['region'], image['type'], flavor['name'],
                                image['name'].replace(' ', '').lower(), 'ovh_public_cloud', ):
             self.inventory.setdefault(instance_group, []).append(instance['id'])
 
-        # Détail des instances dans l'inventaire
+        # Instance details for inventory
         self.inventory['_meta']['hostvars'][instance['id']] = {
             'ansible_ssh_user': image['user'],
             'ansible_ssh_host': self.get_address(instance['ipAddresses']),
@@ -91,30 +91,30 @@ class OvhPublicCloudInventory:
 
 
     def get_address(self, interfaces):
-        ''' Obention de l'adresse ip de l'instance '''
+        ''' Get instance ip address '''
         address = None
 
-        # Type d'interface réseau par défaut ou public si non spécifié
+        # Kind of default network, or public if unspecified
         network_type = self.config.get('openstack', 'openstack_network_default') or 'public'
 
-        # Utilisation d'IPV6 ou pas
+        # Use of IPV6 or not
         use_ipv6 = self.config.getboolean('openstack', 'openstack_network_ipv6') or False
 
-        # Parcours des interfaces
+        # Browse network interfaces
         for interface in interfaces:
 
-            # Est-ce que l'interface correspond à la configuration
+            # Does interface match configuration
             is_address_version = interface['version'] == 6 if use_ipv6 else 4
             is_interface_type = interface['type'] == network_type
 
-            # Si l'interface ne correspond pas, on garde la première trouvée
-            # avec un fallback sur le choix de la version ip
+            # If interface doesn't match, we keep the first found
+            # with a preference for the one matching the ipv6 choice
             if (is_address_version and is_interface_type) or is_address_version or address == None:
                 address = interface['ip']
 
         return address
 
 
-# Execution
+# Launch generation
 if __name__ == '__main__':
     print OvhPublicCloudInventory()

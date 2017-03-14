@@ -109,7 +109,8 @@ class OvhPublicCloudInventory:
 
             # If interface doesn't match, we keep the first found
             # with a preference for the one matching the ipv6 choice
-            if (is_address_version and is_interface_type) or is_address_version or address == None:
+            if (is_address_version and is_interface_type) \
+               or (is_address_version and address == None) or address == None:
                 address = interface['ip']
 
         return address
